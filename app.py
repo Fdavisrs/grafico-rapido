@@ -1,66 +1,64 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import openai
+import os
 import unicodedata
+from dotenv import load_dotenv
 
-st.set_page_config(page_title="Gráfico Rápido", layout="wide")
-st.title("📊 Gráfico Rápido")
-st.markdown("Envie sua planilha CSV")
+# Carrega variáveis do .env se existir
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Padroniza nomes
-def padronizar_nome_coluna(col):
-    col = unicodedata.normalize('NFKD', col).encode('ASCII', 'ignore').decode('ASCII')
-    return col.lower().strip().replace(" ", "_")
+# Configuração da página
+st.set_page_config(page_title="Gráfico Rápido + IA", layout="wide")
+st.title("Gráfico Rápido \U0001F4C8 + IA")
+st.markdown("Envie sua planilha CSV para visualização inteligente de métricas.")
 
-# Colunas irrelevantes
-colunas_ignoradas = [
-    "cpf", "cnpj", "telefone", "celular", "email", "nome", "id", "codigo", "nota", "endereco", "numero_nota", "serie", "nfe"
-]
-
-# Força conversão de colunas para numérico se possível
-def tentar_converter_colunas(df):
-    for col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors='ignore')
-    return df
-
+# Upload do arquivo
 file = st.file_uploader("Arraste ou selecione o arquivo CSV", type=["csv"])
 
 if file is not None:
-    df = pd.read_csv(file, sep=None, engine="python")
+    df = pd.read_csv(file, sep=None, engine='python')
 
-    # Padroniza nomes
-    df.columns = [padronizar_nome_coluna(col) for col in df.columns]
-    df.dropna(axis=1, how='all', inplace=True)
-    df = df.loc[:, ~df.columns.str.contains("unnamed")]
+    # Padroniza os nomes das colunas
+    def padronizar_nome(col):
+        col = unicodedata.normalize('NFKD', col).encode('ASCII', 'ignore').decode('ASCII')
+        return col.strip().lower().replace(" ", "_")
 
-    # Tenta converter colunas numéricas
-    df = tentar_converter_colunas(df)
+    df.columns = [padronizar_nome(col) for col in df.columns]
 
-    st.subheader("📋 Pré-visualização dos dados")
+    st.subheader("\U0001F4C4 Pré-visualização dos dados")
     st.dataframe(df.head(), use_container_width=True)
 
-    # Identifica colunas válidas para X e Y
-    colunas_x_validas = [
-        col for col in df.select_dtypes(include='object').columns
-        if not any(ign in col for ign in colunas_ignoradas)
-    ]
-    colunas_y_validas = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+    # Envia os nomes das colunas para a IA
+    with st.spinner("Analisando colunas com IA..."):
+        try:
+            prompt = (
+                "Abaixo está uma lista de colunas de uma planilha de vendas. "
+                "Retorne apenas os nomes de colunas que indicam métricas quantitativas relevantes para análise (como total, valor, quantidade, vendas, etc.). "
+                "Responda com uma lista Python simples.\n\nColunas:\n" + str(list(df.columns))
+            )
 
-    if not colunas_x_validas or not colunas_y_validas:
-        st.error("❌ Não foi possível identificar colunas relevantes para análise.")
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+
+            colunas_validas = eval(response.choices[0].message.content)
+        except Exception as e:
+            st.error(f"Erro ao consultar a API da OpenAI: {e}")
+            colunas_validas = []
+
+    if colunas_validas:
+        st.success(f"Colunas identificadas: {', '.join(colunas_validas)}")
+
+        # Seleção de colunas para gerar gráfico
+        col_x = st.selectbox("Escolha a coluna para o eixo X", df.columns)
+        col_y = st.selectbox("Escolha a coluna para o eixo Y (somente numérica)", colunas_validas)
+
+        if col_x and col_y:
+            st.line_chart(df[[col_x, col_y]].dropna().set_index(col_x))
     else:
-        eixo_x = st.selectbox("Escolha a coluna para o eixo X", colunas_x_validas)
-        eixo_y = st.selectbox("Escolha a coluna para o eixo Y (somente numérica)", colunas_y_validas)
-
-        if eixo_x != eixo_y:
-            st.subheader("📈 Resultado")
-            fig, ax = plt.subplots(figsize=(12, 6))
-            df.groupby(eixo_x)[eixo_y].sum().sort_values(ascending=False).plot(kind="bar", ax=ax)
-            ax.set_xlabel(eixo_x)
-            ax.set_ylabel(eixo_y)
-            ax.set_title(f"{eixo_y} por {eixo_x}")
-            plt.xticks(rotation=45, ha="right")
-            plt.tight_layout()
-            st.pyplot(fig)
-        else:
-            st.warning("⚠️ Selecione colunas diferentes para X e Y.")
+        st.error("A IA não conseguiu identificar colunas numéricas relevantes.")
