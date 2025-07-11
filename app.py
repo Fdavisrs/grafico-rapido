@@ -9,12 +9,17 @@ uploaded_file = st.file_uploader("Upload", type="csv")
 
 if uploaded_file is not None:
     try:
-        # Lê a planilha
         df = pd.read_csv(uploaded_file, sep=';', dtype=str)
+        
+        # Mostra colunas cruas para debug
+        st.write("🧩 Colunas detectadas no arquivo:", df.columns.tolist())
+        
+        # Limpa nomes de colunas
+        df.columns = df.columns.str.strip().str.replace(r"[^\w\s]", "", regex=True).str.replace(" ", "_")
 
-        # Tenta converter colunas que parecem números
+        # Converte possíveis colunas numéricas
         for col in df.columns:
-            df[col] = df[col].str.replace(',', '.', regex=False)
+            df[col] = df[col].str.replace(",", ".", regex=False)
             try:
                 df[col] = pd.to_numeric(df[col])
             except:
@@ -40,4 +45,4 @@ if uploaded_file is not None:
         else:
             st.warning("❗ Selecione colunas diferentes para X e Y.")
     except Exception as e:
-        st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
+        st.error(f"Erro ao processar o arquivo: {e}")
