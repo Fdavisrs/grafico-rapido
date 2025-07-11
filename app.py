@@ -9,15 +9,17 @@ uploaded_file = st.file_uploader("Upload", type="csv")
 
 if uploaded_file is not None:
     try:
-        # Lê o CSV usando ponto e vírgula como separador
+        # Lê a planilha usando ponto e vírgula
         df = pd.read_csv(uploaded_file, sep=';')
 
         st.subheader("Pré-visualização dos dados")
         st.dataframe(df)
 
-        # Seleção de colunas para os eixos
+        # Mostra apenas colunas válidas para X (todas) e para Y (numéricas)
+        colunas_numericas = df.select_dtypes(include='number').columns.tolist()
+
         col_x = st.selectbox("Escolha a coluna para o eixo X", df.columns)
-        col_y = st.selectbox("Escolha a coluna para o eixo Y", df.columns)
+        col_y = st.selectbox("Escolha a coluna para o eixo Y (somente numérica)", colunas_numericas)
 
         if col_x != col_y:
             dados = df.groupby(col_x)[col_y].sum().reset_index()
