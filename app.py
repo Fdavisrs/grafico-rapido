@@ -3,47 +3,48 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import unicodedata
 
-# Configuração da página
 st.set_page_config(page_title="Gráfico Rápido", layout="wide")
 st.title("📊 Gráfico Rápido")
 st.markdown("Envie sua planilha CSV")
 
-# Padroniza os nomes das colunas
+# Padroniza nomes
 def padronizar_nome_coluna(col):
     col = unicodedata.normalize('NFKD', col).encode('ASCII', 'ignore').decode('ASCII')
     return col.lower().strip().replace(" ", "_")
 
-# Colunas irrelevantes para análise
+# Colunas irrelevantes
 colunas_ignoradas = [
     "cpf", "cnpj", "telefone", "celular", "email", "nome", "id", "codigo", "nota", "endereco", "numero_nota", "serie", "nfe"
 ]
 
-# Detecta colunas numéricas úteis com base no nome e tipo
-def colunas_metricas(df):
-    metricas_comuns = ["valor", "quantidade", "preco", "total", "custo", "lucro", "vendas", "desconto"]
-    colunas_numericas = df.select_dtypes(include=['float64', 'int64']).columns
-    return [col for col in colunas_numericas if any(m in col for m in metricas_comuns)]
+# Força conversão de colunas para numérico se possível
+def tentar_converter_colunas(df):
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors='ignore')
+    return df
 
-# Upload do arquivo
 file = st.file_uploader("Arraste ou selecione o arquivo CSV", type=["csv"])
 
 if file is not None:
     df = pd.read_csv(file, sep=None, engine="python")
 
-    # Padroniza colunas
+    # Padroniza nomes
     df.columns = [padronizar_nome_coluna(col) for col in df.columns]
     df.dropna(axis=1, how='all', inplace=True)
     df = df.loc[:, ~df.columns.str.contains("unnamed")]
 
+    # Tenta converter colunas numéricas
+    df = tentar_converter_colunas(df)
+
     st.subheader("📋 Pré-visualização dos dados")
     st.dataframe(df.head(), use_container_width=True)
 
-    # Detecta colunas úteis
+    # Identifica colunas válidas para X e Y
     colunas_x_validas = [
         col for col in df.select_dtypes(include='object').columns
         if not any(ign in col for ign in colunas_ignoradas)
     ]
-    colunas_y_validas = colunas_metricas(df)
+    colunas_y_validas = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
 
     if not colunas_x_validas or not colunas_y_validas:
         st.error("❌ Não foi possível identificar colunas relevantes para análise.")
