@@ -1,37 +1,35 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
 
-st.title("📊 Visualizador de Vendas - Versão com Mapeamento Dinâmico")
+st.title("Gráfico Rápido")
+st.write("Envie sua planilha CSV")
 
-file = st.file_uploader("📁 Envie sua planilha CSV", type=["csv"])
+uploaded_file = st.file_uploader("Upload", type="csv")
 
-if file is not None:
+if uploaded_file is not None:
     try:
-        # Tenta abrir com vírgula, se falhar tenta com ponto e vírgula
-        try:
-            df = pd.read_csv(file)
-        except:
-            df = pd.read_csv(file, sep=';')
+        # Lê o CSV usando ponto e vírgula como separador
+        df = pd.read_csv(uploaded_file, sep=';')
 
-        st.success("✅ Planilha carregada com sucesso!")
-        st.dataframe(df.head())
+        st.subheader("Pré-visualização dos dados")
+        st.dataframe(df)
 
-        st.subheader("🧩 Mapeamento de Colunas")
-        col_data = st.selectbox("🗓️ Qual é a coluna de **data da venda**?", df.columns)
-        col_produto = st.selectbox("📦 Qual é a coluna de **produto**?", df.columns)
-        col_valor = st.selectbox("💰 Qual é a coluna de **valor da venda**?", df.columns)
+        # Seleção de colunas para os eixos
+        col_x = st.selectbox("Escolha a coluna para o eixo X", df.columns)
+        col_y = st.selectbox("Escolha a coluna para o eixo Y", df.columns)
 
-        # Converter a coluna de data
-        df[col_data] = pd.to_datetime(df[col_data], errors='coerce')
+        if col_x != col_y:
+            dados = df.groupby(col_x)[col_y].sum().reset_index()
 
-        st.markdown("---")
+            chart = alt.Chart(dados).mark_bar().encode(
+                x=alt.X(col_x, sort="-y"),
+                y=col_y,
+                tooltip=[col_x, col_y]
+            ).interactive()
 
-        st.subheader("📉 Vendas por Produto")
-        vendas_por_produto = df.groupby(col_produto)[col_valor].sum().sort_values(ascending=False)
-        st.bar_chart(vendas_por_produto)
-
-        st.subheader("📈 Vendas ao Longo do Tempo")
-        vendas_por_data = df.groupby(col_data)[col_valor].sum().sort_index()
-        st.line_chart(vendas_por_data)
-
-    except Exception
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.warning("❗ Selecione colunas diferentes para X e Y.")
+    except Exception as e:
+        st.error(f"Ocorreu um erro ao ler o arquivo: {e}")
