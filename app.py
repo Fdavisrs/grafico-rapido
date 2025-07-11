@@ -1,48 +1,54 @@
 import streamlit as st
 import pandas as pd
-import altair as alt
+import matplotlib.pyplot as plt
+import unicodedata
 
-st.title("Gráfico Rápido")
-st.write("Envie sua planilha CSV")
+st.set_page_config(page_title="Gráfico Rápido", layout="wide")
 
-uploaded_file = st.file_uploader("Upload", type="csv")
+st.title("📊 Gráfico Rápido")
+st.markdown("Envie sua planilha CSV")
 
-if uploaded_file is not None:
-    try:
-        df = pd.read_csv(uploaded_file, sep=';', dtype=str)
-        
-        # Mostra colunas cruas para debug
-        st.write("🧩 Colunas detectadas no arquivo:", df.columns.tolist())
-        
-        # Limpa nomes de colunas
-        df.columns = df.columns.str.strip().str.replace(r"[^\w\s]", "", regex=True).str.replace(" ", "_")
+# Função "agente inteligente" para padronizar colunas
+def padronizar_nome_coluna(col):
+    col = unicodedata.normalize('NFKD', col).encode('ASCII', 'ignore').decode('ASCII')  # remove acentos
+    col = col.lower().strip().replace(" ", "_")  # minúsculas e underline
+    return col
 
-        # Converte possíveis colunas numéricas
-        for col in df.columns:
-            df[col] = df[col].str.replace(",", ".", regex=False)
-            try:
-                df[col] = pd.to_numeric(df[col])
-            except:
-                pass
+# Upload
+file = st.file_uploader("Arraste ou selecione o arquivo CSV", type=["csv"])
 
-        st.subheader("Pré-visualização dos dados")
-        st.dataframe(df)
+if file is not None:
+    df = pd.read_csv(file, sep=None, engine="python")
 
-        colunas_numericas = df.select_dtypes(include='number').columns.tolist()
-        col_x = st.selectbox("Escolha a coluna para o eixo X", df.columns)
-        col_y = st.selectbox("Escolha a coluna para o eixo Y (somente numérica)", colunas_numericas)
+    # Normaliza nomes de colunas
+    df.columns = [padronizar_nome_coluna(col) for col in df.columns]
 
-        if col_x != col_y and col_y:
+    # Remove colunas totalmente vazias ou sem sentido
+    df.dropna(axis=1, how='all', inplace=True)
+    df = df.loc[:, ~df.columns.str.contains("unnamed")]
+
+    st.subheader("📋 Pré-visualização dos dados")
+    st.dataframe(df.head(), use_container_width=True)
+
+    colunas_numericas = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+    colunas_disponiveis = df.columns.tolist()
+
+    if colunas_numericas and colunas_disponiveis:
+        st.subheader("🎯 Escolha os eixos do gráfico")
+        col_x = st.selectbox("Eixo X", colunas_disponiveis)
+        col_y = st.selectbox("Eixo Y (somente colunas numéricas)", colunas_numericas)
+
+        if col_x != col_y:
             dados = df.groupby(col_x)[col_y].sum().reset_index()
 
-            chart = alt.Chart(dados).mark_bar().encode(
-                x=alt.X(col_x, sort="-y"),
-                y=col_y,
-                tooltip=[col_x, col_y]
-            ).interactive()
-
-            st.altair_chart(chart, use_container_width=True)
+            fig, ax = plt.subplots(figsize=(12, 6))
+            ax.bar(dados[col_x].astype(str), dados[col_y])
+            ax.set_xlabel(col_x)
+            ax.set_ylabel(col_y)
+            ax.set_title(f"{col_y} por {col_x}")
+            plt.xticks(rotation=45, ha='right')
+            st.pyplot(fig)
         else:
-            st.warning("❗ Selecione colunas diferentes para X e Y.")
-    except Exception as e:
-        st.error(f"Erro ao processar o arquivo: {e}")
+            st.warning("❗ Selecione colunas diferentes para os eixos X e Y.")
+    else:
+        st.error("❌ Não foram encontradas colunas numéricas para gerar o gráfico.")
