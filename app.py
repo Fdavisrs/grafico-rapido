@@ -48,16 +48,25 @@ if arquivo:
         if all(col in df.columns for col in colunas_esperadas):
             df["data da venda"] = pd.to_datetime(df["data da venda"], errors='coerce')
 
-            st.subheader("📈 Gráfico de Barras - Total de vendas por produto")
-            vendas_produto = df.groupby("produto")["total"].sum().sort_values()
-            fig, ax = plt.subplots()
-            vendas_produto.plot(kind="barh", ax=ax)
-            ax.set_xlabel("Total vendido (R$")
-            ax.set_ylabel("Produto")
-            ax.set_title("Total de Vendas por Produto")
-            st.pyplot(fig)
+            st.subheader("📊 Visualização Personalizada")
+            col1, col2 = st.columns(2)
+            with col1:
+                eixo_x = st.selectbox("Escolha o eixo X:", options=df.columns)
+            with col2:
+                eixo_y = st.selectbox("Escolha o eixo Y:", options=df.select_dtypes(include=['number']).columns)
+
+            if eixo_x and eixo_y:
+                st.subheader("📈 Gráfico de Barras")
+                dados_grafico = df.groupby(eixo_x)[eixo_y].sum().sort_values()
+                fig, ax = plt.subplots()
+                dados_grafico.plot(kind="barh", ax=ax)
+                ax.set_xlabel(eixo_y)
+                ax.set_ylabel(eixo_x)
+                ax.set_title(f"{eixo_y} por {eixo_x}")
+                st.pyplot(fig)
 
             st.subheader("💡 Insights Automáticos")
+            vendas_produto = df.groupby("produto")["total"].sum()
             produto_top = vendas_produto.idxmax()
             valor_top = vendas_produto.max()
             produto_low = vendas_produto.idxmin()
