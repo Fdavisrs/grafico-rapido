@@ -65,7 +65,7 @@ if arquivo:
                 ax.set_title(f"{eixo_y} por {eixo_x}")
                 st.pyplot(fig)
 
-            st.subheader("💡 Insights Automáticos")
+            st.subheader("💡 Insights Automáticos e Ações Recomendadas")
             vendas_produto = df.groupby("produto")["total"].sum()
             produto_top = vendas_produto.idxmax()
             valor_top = vendas_produto.max()
@@ -74,10 +74,20 @@ if arquivo:
             total_geral = df["total"].sum()
             media_diaria = df.groupby("data da venda")["total"].sum().mean()
 
-            st.markdown(f"- 🥇 Produto mais vendido: **{produto_top}** (R$ {valor_top:.2f})")
-            st.markdown(f"- 🧊 Produto com menor venda: **{produto_low}** (R$ {valor_low:.2f})")
+            maior_dia = df.groupby("data da venda")["total"].sum().idxmax()
+            menor_dia = df.groupby("data da venda")["total"].sum().idxmin()
+
+            melhor_filial = df.groupby("filial")["total"].sum().idxmax()
+            pior_filial = df.groupby("filial")["total"].sum().idxmin()
+
+            st.markdown(f"- 🥇 Produto mais vendido: **{produto_top}** (R$ {valor_top:.2f}) → Reforce o estoque desse item.")
+            st.markdown(f"- 🧊 Produto com menor venda: **{produto_low}** (R$ {valor_low:.2f}) → Avalie promoções para esse produto.")
             st.markdown(f"- 💰 Total geral vendido: **R$ {total_geral:.2f}**")
             st.markdown(f"- 📅 Média de vendas por dia: **R$ {media_diaria:.2f}**")
+            st.markdown(f"- 📈 Dia com maior venda: **{maior_dia.strftime('%d/%m/%Y')}** → Avalie repetir ações desse dia.")
+            st.markdown(f"- 📉 Dia com menor venda: **{menor_dia.strftime('%d/%m/%Y')}** → Possível dia para promoções ou novas ações.")
+            st.markdown(f"- 🏪 Filial com melhor desempenho: **{melhor_filial}** → Considere reforçar a equipe ou estender o horário.")
+            st.markdown(f"- 🏚️ Filial com menor desempenho: **{pior_filial}** → Avalie campanhas locais de divulgação.")
 
         else:
             st.error("A planilha deve conter as colunas: data da venda, produto, quantidade, valor unitário, filial, total")
