@@ -3,83 +3,68 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import io
 
-# Título do app
-st.set_page_config(layout="wide")
-st.title("Análise de Vendas com Insights Automáticos")
+st.set_page_config(page_title="Análise de Vendas com Insights Automáticos", layout="wide")
+st.title("\U0001f4ca Análise de Vendas com Insights Automáticos")
 
-# Botão para baixar modelo de planilha
-modelo = pd.DataFrame(columns=["Data da Venda", "Produto", "Quantidade", "Valor Unitário", "Filial", "Total"])
-modelo_csv = modelo.to_csv(index=False).encode("utf-8")
-st.download_button(
-    label="📂 Baixar modelo de planilha",
-    data=modelo_csv,
-    file_name="modelo_planilha.csv",
-    mime="text/csv"
-)
+# Botão para baixar o modelo de planilha
+with open("modelo_planilha_vendas.csv", "rb") as file:
+    st.download_button(
+        label="📄 Baixar modelo de planilha",
+        data=file,
+        file_name="modelo_planilha_vendas.csv",
+        mime="text/csv"
+    )
 
-# Upload do arquivo
-arquivo = st.file_uploader("Faça upload da sua planilha de vendas (CSV ou Excel):", type=["csv", "xlsx"])
+st.markdown("Faça upload da sua planilha de vendas (CSV ou Excel):")
+uploaded_file = st.file_uploader("", type=["csv", "xlsx"])
 
-if arquivo is not None:
+if uploaded_file:
     try:
-        if arquivo.name.endswith(".csv"):
-            df = pd.read_csv(arquivo)
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
         else:
-            df = pd.read_excel(arquivo)
+            df = pd.read_excel(uploaded_file)
 
-        st.success("Arquivo carregado com sucesso!")
+        # Limpeza de colunas: tira acentos, deixa minúsculo, tira espaços
+        df.columns = df.columns.str.strip().str.lower().str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8')
 
-        # Normaliza nomes de colunas
-        df.columns = df.columns.str.strip().str.lower()
-        colunas_esperadas = ['data da venda', 'produto', 'quantidade', 'valor unitário', 'filial', 'total']
-        if not all(col in df.columns for col in colunas_esperadas):
-            st.error("A planilha deve conter as colunas: " + ", ".join(colunas_esperadas))
+        # Colunas obrigatórias
+        required_columns = ["data da venda", "produto", "quantidade", "valor unitario", "filial", "total"]
+        if not all(col in df.columns for col in required_columns):
+            st.error("A planilha deve conter as colunas: data da venda, produto, quantidade, valor unitario, filial, total")
         else:
-            # Visualiza dados
-            st.subheader("Visualização dos dados")
-            st.dataframe(df)
+            # Conversões
+            df["data da venda"] = pd.to_datetime(df["data da venda"], errors='coerce')
+            df = df.dropna(subset=["data da venda"])  # remove linhas com datas inválidas
 
-            # Gráfico
-            st.subheader("Gráficos")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                eixo_x = st.selectbox("Selecione o eixo X:", df.columns)
-            with col2:
-                eixo_y = st.selectbox("Selecione o eixo Y:", df.select_dtypes(include='number').columns)
-            with col3:
-                tipo_grafico = st.selectbox("Tipo de gráfico:", ["Barra", "Pizza", "Linha"])
+            st.success("Arquivo carregado com sucesso!")
 
-            if eixo_x and eixo_y:
-                agrupado = df.groupby(eixo_x)[eixo_y].sum().sort_values(ascending=False)
-                fig, ax = plt.subplots()
-                if tipo_grafico == "Barra":
-                    agrupado.plot(kind='bar', ax=ax)
-                elif tipo_grafico == "Linha":
-                    agrupado.plot(kind='line', ax=ax)
-                elif tipo_grafico == "Pizza":
-                    agrupado.plot(kind='pie', ax=ax, autopct='%1.1f%%')
-                    ax.set_ylabel('')
-                st.pyplot(fig)
+            # Gráficos de análise
+            st.subheader("Gráfico de Vendas por Produto")
+            produto_agrupado = df.groupby("produto")["total"].sum().sort_values(ascending=False)
+            fig1, ax1 = plt.subplots()
+            produto_agrupado.plot(kind='bar', ax=ax1)
+            ax1.set_ylabel("Total de Vendas (R$)")
+            ax1.set_title("Total de Vendas por Produto")
+            st.pyplot(fig1)
 
-            # Insights automáticos
-            st.subheader("🧰 Insights automáticos")
-            try:
-                total_vendas = df['total'].sum()
-                produto_mais_vendido = df.groupby('produto')['quantidade'].sum().idxmax()
-                produto_mais_valioso = df.groupby('produto')['total'].sum().idxmax()
-                melhor_dia = df.groupby('data da venda')['total'].sum().idxmax()
-                filial_top = df.groupby('filial')['total'].sum().idxmax()
+            st.subheader("Gráfico de Vendas por Filial")
+            filial_agrupado = df.groupby("filial")["total"].sum().sort_values(ascending=False)
+            fig2, ax2 = plt.subplots()
+            filial_agrupado.plot(kind='pie', autopct='%1.1f%%', ax=ax2)
+            ax2.set_ylabel("")
+            ax2.set_title("Participação de Vendas por Filial")
+            st.pyplot(fig2)
 
-                st.markdown(f"- **Total vendido:** R$ {total_vendas:,.2f}")
-                st.markdown(f"- **Produto mais vendido (em quantidade):** {produto_mais_vendido}")
-                st.markdown(f"- **Produto com maior valor de venda:** {produto_mais_valioso}")
-                st.markdown(f"- **Dia com maior venda:** {melhor_dia}")
-                st.markdown(f"- **Filial com maior venda:** {filial_top}")
-            except Exception as e:
-                st.warning(f"Não foi possível gerar todos os insights: {e}")
+            # Insights automatizados
+            st.subheader("\U0001f4a1 Insights de Vendas")
+            melhor_dia = df.groupby("data da venda")["total"].sum().idxmax().strftime('%d/%m/%Y')
+            produto_top = produto_agrupado.idxmax()
+            filial_top = filial_agrupado.idxmax()
+
+            st.markdown(f"- **Melhor dia de vendas:** {melhor_dia}")
+            st.markdown(f"- **Produto mais vendido (R$):** {produto_top}")
+            st.markdown(f"- **Filial com maior faturamento:** {filial_top}")
 
     except Exception as e:
-        st.error(f"Erro ao carregar o arquivo: {e}")
-
-else:
-    st.info("Por favor, envie um arquivo para começar.")
+        st.error(f"Erro ao processar o arquivo: {e}")
