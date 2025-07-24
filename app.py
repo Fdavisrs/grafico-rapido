@@ -1,92 +1,77 @@
 import streamlit as st
 import pandas as pd
-import io
+import matplotlib.pyplot as plt
+from io import BytesIO
 
-st.set_page_config(page_title="Análise de Vendas com Insights Automáticos", layout="centered")
-
+st.set_page_config(page_title="Análise de Vendas com Insights Automáticos", layout="wide")
 st.title("📊 Análise de Vendas com Insights Automáticos")
 
-# Planilha modelo embutida como string
-modelo_csv = """data da venda,produto,quantidade,valor unitário,filial,total
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-,,,,,
-"""
+# Função para gerar modelo de planilha
+@st.cache_data
+def gerar_modelo_planilha():
+    dados_exemplo = {
+        "data da venda": ["2024-07-01"] * 30,
+        "produto": ["Café", "Pão francês", "Croissant", "Bolo de cenoura", "Pão de queijo"] * 6,
+        "quantidade": [10, 20, 15, 5, 12] * 6,
+        "valor unitário": [5.0, 1.0, 3.5, 4.0, 2.5] * 6,
+        "filial": ["Centro", "Centro", "Bairro", "Centro", "Bairro"] * 6,
+        "total": [50.0, 20.0, 52.5, 20.0, 30.0] * 6,
+    }
+    df_exemplo = pd.DataFrame(dados_exemplo)
+    buffer = BytesIO()
+    df_exemplo.to_csv(buffer, index=False)
+    buffer.seek(0)
+    return buffer
 
-# Botão de download da planilha modelo
 st.download_button(
-    label="📥 Baixar modelo de planilha",
-    data=modelo_csv,
+    label="📄 Baixar modelo de planilha",
+    data=gerar_modelo_planilha(),
     file_name="modelo_planilha_vendas.csv",
-    mime="text/csv",
+    mime="text/csv"
 )
 
-# Upload de planilha
-uploaded_file = st.file_uploader("Faça upload da sua planilha de vendas (CSV ou Excel):", type=["csv", "xlsx"])
+st.write("Faça upload da sua planilha de vendas (CSV ou Excel):")
 
-if uploaded_file:
+arquivo = st.file_uploader("", type=["csv", "xlsx"])
+
+if arquivo:
     try:
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file)
+        if arquivo.name.endswith(".csv"):
+            df = pd.read_csv(arquivo)
         else:
-            df = pd.read_excel(uploaded_file)
+            df = pd.read_excel(arquivo)
 
-        # Verifica se colunas obrigatórias existem
+        st.success("Arquivo carregado com sucesso!")
+
+        # Verifica colunas obrigatórias
         colunas_esperadas = ["data da venda", "produto", "quantidade", "valor unitário", "filial", "total"]
-        if not all(col in df.columns for col in colunas_esperadas):
-            st.error("❌ A planilha deve conter as colunas: data da venda, produto, quantidade, valor unitário, filial, total")
+        if all(col in df.columns for col in colunas_esperadas):
+            df["data da venda"] = pd.to_datetime(df["data da venda"], errors='coerce')
+
+            st.subheader("📈 Gráfico de Barras - Total de vendas por produto")
+            vendas_produto = df.groupby("produto")["total"].sum().sort_values()
+            fig, ax = plt.subplots()
+            vendas_produto.plot(kind="barh", ax=ax)
+            ax.set_xlabel("Total vendido (R$")
+            ax.set_ylabel("Produto")
+            ax.set_title("Total de Vendas por Produto")
+            st.pyplot(fig)
+
+            st.subheader("💡 Insights Automáticos")
+            produto_top = vendas_produto.idxmax()
+            valor_top = vendas_produto.max()
+            produto_low = vendas_produto.idxmin()
+            valor_low = vendas_produto.min()
+            total_geral = df["total"].sum()
+            media_diaria = df.groupby("data da venda")["total"].sum().mean()
+
+            st.markdown(f"- 🥇 Produto mais vendido: **{produto_top}** (R$ {valor_top:.2f})")
+            st.markdown(f"- 🧊 Produto com menor venda: **{produto_low}** (R$ {valor_low:.2f})")
+            st.markdown(f"- 💰 Total geral vendido: **R$ {total_geral:.2f}**")
+            st.markdown(f"- 📅 Média de vendas por dia: **R$ {media_diaria:.2f}**")
+
         else:
-            st.success("✅ Arquivo carregado com sucesso!")
-            st.write("Visualização dos dados:")
-            st.dataframe(df)
-
-            # Insights automáticos
-            st.subheader("🔍 Insights automáticos")
-            try:
-                df["data da venda"] = pd.to_datetime(df["data da venda"], errors="coerce")
-                df = df.dropna(subset=["data da venda"])
-
-                melhor_dia = df.groupby("data da venda")["total"].sum().idxmax()
-                maior_venda = df.loc[df["total"].idxmax()]
-                produto_mais_vendido = df.groupby("produto")["quantidade"].sum().idxmax()
-                filial_top = df.groupby("filial")["total"].sum().idxmax()
-
-                st.markdown(f"📅 **Dia com maior faturamento:** {melhor_dia.date()}")
-                st.markdown(f"💰 **Maior venda:** {maior_venda['produto']} – R$ {maior_venda['total']:.2f}")
-                st.markdown(f"🔥 **Produto mais vendido (em quantidade):** {produto_mais_vendido}")
-                st.markdown(f"🏪 **Filial com maior faturamento:** {filial_top}")
-
-            except Exception as e:
-                st.warning("Não foi possível gerar insights automáticos.")
-                st.exception(e)
+            st.error("A planilha deve conter as colunas: data da venda, produto, quantidade, valor unitário, filial, total")
 
     except Exception as e:
-        st.error("Erro ao processar o arquivo.")
-        st.exception(e)
+        st.error(f"Erro ao processar o arquivo: {e}")
