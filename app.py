@@ -1,64 +1,52 @@
 import streamlit as st
 import pandas as pd
-import openai
-import os
-import unicodedata
-from dotenv import load_dotenv
+import plotly.express as px
 
-# Carrega variáveis do .env se existir
-load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+st.set_page_config(page_title="Gráfico Rápido com GPT", layout="wide")
 
-# Configuração da página
-st.set_page_config(page_title="Gráfico Rápido + IA", layout="wide")
-st.title("Gráfico Rápido \U0001F4C8 + IA")
-st.markdown("Envie sua planilha CSV para visualização inteligente de métricas.")
+st.title("📊 Gráfico Rápido com GPT")
+st.caption("📂 Envie sua planilha (.csv ou .xlsx)")
 
-# Upload do arquivo
-file = st.file_uploader("Arraste ou selecione o arquivo CSV", type=["csv"])
+# Upload
+uploaded_file = st.file_uploader("Drag and drop file here", type=["csv", "xlsx"])
 
-if file is not None:
-    df = pd.read_csv(file, sep=None, engine='python')
+if uploaded_file:
+    file_ext = uploaded_file.name.split(".")[-1].lower()
+    
+    try:
+        if file_ext == "csv":
+            df = pd.read_csv(uploaded_file)
+        elif file_ext == "xlsx":
+            df = pd.read_excel(uploaded_file)
+        else:
+            st.error("Formato de arquivo não suportado.")
+            st.stop()
+    except Exception as e:
+        st.error(f"Erro ao ler arquivo: {e}")
+        st.stop()
 
-    # Padroniza os nomes das colunas
-    def padronizar_nome(col):
-        col = unicodedata.normalize('NFKD', col).encode('ASCII', 'ignore').decode('ASCII')
-        return col.strip().lower().replace(" ", "_")
+    st.success("✅ Arquivo carregado com sucesso!")
+    st.dataframe(df.head(50), use_container_width=True)
 
-    df.columns = [padronizar_nome(col) for col in df.columns]
+    # Separar colunas categóricas e numéricas
+    categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
+    numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
 
-    st.subheader("\U0001F4C4 Pré-visualização dos dados")
-    st.dataframe(df.head(), use_container_width=True)
+    if not categorical_cols or not numeric_cols:
+        st.warning("A planilha precisa ter pelo menos uma coluna categórica e uma numérica.")
+        st.stop()
 
-    # Envia os nomes das colunas para a IA
-    with st.spinner("Analisando colunas com IA..."):
-        try:
-            prompt = (
-                "Abaixo está uma lista de colunas de uma planilha de vendas. "
-                "Retorne apenas os nomes de colunas que indicam métricas quantitativas relevantes para análise (como total, valor, quantidade, vendas, etc.). "
-                "Responda com uma lista Python simples.\n\nColunas:\n" + str(list(df.columns))
-            )
+    x_axis = st.selectbox("Escolha o eixo X (categoria):", categorical_cols)
+    y_axis = st.selectbox("Escolha o eixo Y (valor numérico):", numeric_cols)
+    chart_type = st.selectbox("Tipo de gráfico:", ["Barra", "Linha", "Pizza"])
 
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
+    df_grouped = df.groupby(x_axis)[y_axis].sum().reset_index()
 
-            colunas_validas = eval(response.choices[0].message.content)
-        except Exception as e:
-            st.error(f"Erro ao consultar a API da OpenAI: {e}")
-            colunas_validas = []
+    if chart_type == "Barra":
+        fig = px.bar(df_grouped, x=x_axis, y=y_axis)
+    elif chart_type == "Linha":
+        fig = px.line(df_grouped, x=x_axis, y=y_axis)
+    elif chart_type == "Pizza":
+        fig = px.pie(df_grouped, names=x_axis, values=y_axis)
 
-    if colunas_validas:
-        st.success(f"Colunas identificadas: {', '.join(colunas_validas)}")
-
-        # Seleção de colunas para gerar gráfico
-        col_x = st.selectbox("Escolha a coluna para o eixo X", df.columns)
-        col_y = st.selectbox("Escolha a coluna para o eixo Y (somente numérica)", colunas_validas)
-
-        if col_x and col_y:
-            st.line_chart(df[[col_x, col_y]].dropna().set_index(col_x))
-    else:
-        st.error("A IA não conseguiu identificar colunas numéricas relevantes.")
+    st.plotly_chart(fig, use_container_width=True)
