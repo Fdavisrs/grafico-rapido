@@ -1,70 +1,85 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from io import BytesIO
+import io
 
-# Função para gerar modelo da planilha CSV
-def gerar_modelo_planilha():
-    colunas = ['data', 'produto', 'quantidade', 'valor_unitario', 'filial']
-    df_modelo = pd.DataFrame(columns=colunas)
-    df_modelo = df_modelo.reindex(range(30))  # 30 linhas em branco
-    buffer = BytesIO()
-    df_modelo.to_csv(buffer, index=False)
-    buffer.seek(0)
-    return buffer
+# Título do app
+st.set_page_config(layout="wide")
+st.title("Análise de Vendas com Insights Automáticos")
 
-# Título
-st.title("📊 Gerador de Gráficos a partir de Planilhas CSV")
-st.write("Faça o upload da sua planilha CSV ou baixe o modelo para preencher.")
-
-# Botão para baixar o modelo
-buffer = gerar_modelo_planilha()
+# Botão para baixar modelo de planilha
+modelo = pd.DataFrame(columns=["Data da Venda", "Produto", "Quantidade", "Valor Unitário", "Filial", "Total"])
+modelo_csv = modelo.to_csv(index=False).encode("utf-8")
 st.download_button(
-    label="📥 Baixar modelo de planilha",
-    data=buffer,
-    file_name="modelo_planilha_vendas.csv",
+    label="📂 Baixar modelo de planilha",
+    data=modelo_csv,
+    file_name="modelo_planilha.csv",
     mime="text/csv"
 )
 
-# Upload da planilha
-uploaded_file = st.file_uploader("Envie sua planilha", type=["csv"])
+# Upload do arquivo
+arquivo = st.file_uploader("Faça upload da sua planilha de vendas (CSV ou Excel):", type=["csv", "xlsx"])
 
-if uploaded_file:
+if arquivo is not None:
     try:
-        df = pd.read_csv(uploaded_file)
+        if arquivo.name.endswith(".csv"):
+            df = pd.read_csv(arquivo)
+        else:
+            df = pd.read_excel(arquivo)
 
-        # Tentativa de conversão da coluna 'data' para datetime
-        if "data" in df.columns:
-            df["data"] = pd.to_datetime(df["data"], errors="coerce")
+        st.success("Arquivo carregado com sucesso!")
 
-        st.subheader("Prévia dos dados")
-        st.dataframe(df)
+        # Normaliza nomes de colunas
+        df.columns = df.columns.str.strip().str.lower()
+        colunas_esperadas = ['data da venda', 'produto', 'quantidade', 'valor unitário', 'filial', 'total']
+        if not all(col in df.columns for col in colunas_esperadas):
+            st.error("A planilha deve conter as colunas: " + ", ".join(colunas_esperadas))
+        else:
+            # Visualiza dados
+            st.subheader("Visualização dos dados")
+            st.dataframe(df)
 
-        colunas_numericas = df.select_dtypes(include="number").columns.tolist()
-        colunas_categoricas = df.select_dtypes(exclude="number").columns.tolist()
+            # Gráfico
+            st.subheader("Gráficos")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                eixo_x = st.selectbox("Selecione o eixo X:", df.columns)
+            with col2:
+                eixo_y = st.selectbox("Selecione o eixo Y:", df.select_dtypes(include='number').columns)
+            with col3:
+                tipo_grafico = st.selectbox("Tipo de gráfico:", ["Barra", "Pizza", "Linha"])
 
-        # Seleções
-        eixo_x = st.selectbox("Escolha o eixo X (categorias):", colunas_categoricas)
-        eixo_y = st.selectbox("Escolha o eixo Y (valor numérico):", colunas_numericas)
-        tipo_grafico = st.radio("Tipo de gráfico:", ["Barra", "Pizza", "Linha"])
+            if eixo_x and eixo_y:
+                agrupado = df.groupby(eixo_x)[eixo_y].sum().sort_values(ascending=False)
+                fig, ax = plt.subplots()
+                if tipo_grafico == "Barra":
+                    agrupado.plot(kind='bar', ax=ax)
+                elif tipo_grafico == "Linha":
+                    agrupado.plot(kind='line', ax=ax)
+                elif tipo_grafico == "Pizza":
+                    agrupado.plot(kind='pie', ax=ax, autopct='%1.1f%%')
+                    ax.set_ylabel('')
+                st.pyplot(fig)
 
-        # Geração do gráfico
-        st.subheader("Gráfico gerado")
+            # Insights automáticos
+            st.subheader("🧰 Insights automáticos")
+            try:
+                total_vendas = df['total'].sum()
+                produto_mais_vendido = df.groupby('produto')['quantidade'].sum().idxmax()
+                produto_mais_valioso = df.groupby('produto')['total'].sum().idxmax()
+                melhor_dia = df.groupby('data da venda')['total'].sum().idxmax()
+                filial_top = df.groupby('filial')['total'].sum().idxmax()
 
-        if tipo_grafico == "Barra":
-            df_grouped = df.groupby(eixo_x)[eixo_y].sum().sort_values(ascending=False)
-            st.bar_chart(df_grouped)
-
-        elif tipo_grafico == "Pizza":
-            df_grouped = df.groupby(eixo_x)[eixo_y].sum()
-            fig, ax = plt.subplots()
-            ax.pie(df_grouped, labels=df_grouped.index, autopct="%1.1f%%", startangle=90)
-            ax.axis("equal")
-            st.pyplot(fig)
-
-        elif tipo_grafico == "Linha":
-            df_grouped = df.groupby(eixo_x)[eixo_y].sum()
-            st.line_chart(df_grouped)
+                st.markdown(f"- **Total vendido:** R$ {total_vendas:,.2f}")
+                st.markdown(f"- **Produto mais vendido (em quantidade):** {produto_mais_vendido}")
+                st.markdown(f"- **Produto com maior valor de venda:** {produto_mais_valioso}")
+                st.markdown(f"- **Dia com maior venda:** {melhor_dia}")
+                st.markdown(f"- **Filial com maior venda:** {filial_top}")
+            except Exception as e:
+                st.warning(f"Não foi possível gerar todos os insights: {e}")
 
     except Exception as e:
-        st.error(f"Ocorreu um erro ao processar a planilha: {e}")
+        st.error(f"Erro ao carregar o arquivo: {e}")
+
+else:
+    st.info("Por favor, envie um arquivo para começar.")
