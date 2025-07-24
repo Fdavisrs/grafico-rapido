@@ -1,4 +1,4 @@
 streamlit
 pandas
-matplotlib
-unicodedata2
+plotly
+openpyxl
